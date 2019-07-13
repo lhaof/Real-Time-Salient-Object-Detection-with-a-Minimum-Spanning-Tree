@@ -9,8 +9,8 @@ using namespace std;
 class Vertex {
 public:
 	Vertex() {
-		this->vertex_id = -1;
-		this->level = -1;
+		vertex_id = -1;
+		level = -1;
 	}
 	Vertex(int id) {
 		this->vertex_id = id;

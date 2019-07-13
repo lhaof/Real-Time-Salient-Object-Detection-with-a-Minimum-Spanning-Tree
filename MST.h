@@ -1,9 +1,12 @@
 #include <algorithm>
 #include <cassert>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <bitset>
+#include <queue>
 #include <utility>
+#include <vector>
 
 #ifndef _ADJ_H_
 #define _ADJ_H_
@@ -64,7 +67,7 @@ public:
 		this->root = root;
 		this->set_vertex_num(graph->get_vertex_num());
 		this->create_vertices(this->get_vertex_num());
-		parent_of = new int[this->get_vertex_num()];
+		parent_edge = new Edge*[this->get_vertex_num()];
 		has_chosen = new bool[this->get_vertex_num()];
 		memset(has_chosen, 0, sizeof(bool)*this->get_vertex_num());
 		verbose = false;
@@ -79,11 +82,16 @@ public:
 		return root;
 	}
 	int get_parent_of(int vertex_id) {
-		return parent_of[vertex_id];
+		// use edge_from rather than edge_to
+		// it is a little tricky, since the parent_edge is (parent --> child).
+		return parent_edge[vertex_id]->get_edge_from()->get_id();
+	}
+	Edge* get_parent_edge(int vertex_id) {
+		return parent_edge[vertex_id];
 	}
 private:
 	Vertex *root;
-	int *parent_of;
+	Edge **parent_edge;
 	WeightToEdgeListNode *weight_to_edge;
 	bitset<MAX_WEIGHT> weight_bset;
 	bool *has_chosen;
@@ -125,7 +133,7 @@ private:
 					printf("choose %d->%d\n", from_vertex_id, to_vertex_id);
 				}
 				vertex_to_edge[from_vertex_id].insert_edge(pListNode->get_edge());
-				parent_of[to_vertex_id] = from_vertex_id;
+				parent_edge[to_vertex_id] = pListNode->get_edge();
 				expand_front(to_vertex_id, graph);
 			}
 			pListNode->delete_node();
@@ -162,26 +170,117 @@ bool sortfunc(pair<int,int> a, pair<int,int> b) {
     return a.second > b.second;
 }
 
+/*
+1. set seeds
+2. init barrier distance
+3. 
+*/
 class MBDMSTree: public MSTree {
 public:
-	MBDMSTree(MSTree *tree) {
+	MBDMSTree(MSTree *tree, vector<unsigned char>& image) {
+		assert(tree->get_vertex_num()*4 == image.size());
 		min_barrier_dist = new int[tree->get_vertex_num()];
-		for (int i = 0;i < this->get_vertex_num();i++) {
+		is_seed = new bool[tree->get_vertex_num()];
+		max_value_along_path = new int[tree->get_vertex_num()*3];
+		min_value_along_path = new int[tree->get_vertex_num()*3];
+		vertex_value = new int[tree->get_vertex_num()*3];
+		for (int i = 0;i < tree->get_vertex_num();i++) {
 			min_barrier_dist[i] = -1;
+			is_seed[i] = false;
+			for (int j = 0;j < 3;j++) {
+				max_value_along_path[i*3+j] = image[i*4+j];
+				min_value_along_path[i*3+j] = image[i*4+j];
+				vertex_value[i*3+j] = image[i*4+j];
+			}
 		}
+		this->tree = tree;
+	}
+	void compute_MBD() {
+		int seed_count = 0;
+		for (int i = 0;i < tree->get_vertex_num();i++) {
+			if (is_seed[i]) {
+				min_barrier_dist[i] = 0;
+				seed_count++;
+			}
+		}
+		if (seed_count == 0) {
+			throw "ERROR: There is no seeds!\n";
+		}
+		if (seed_count == tree->get_vertex_num()) {
+			throw "ERROR: All vertices are seeds!\n";
+		}
+
+		bottom_up();
+		top_down();
+	}
+	void set_vertex_seed(int vertex_id, bool is_seed=true) {
+		this->is_seed[vertex_id] = is_seed;
 	}
 private:
+	MSTree *tree;
 	int *min_barrier_dist;
+	bool *is_seed;
+	int *max_value_along_path;
+	int *min_value_along_path;
+	int *vertex_value;
 	void bottom_up() {
 		tree->compute_level(tree->get_root()->get_id());
 		vector< pair<int, int> > vec;
-		for (int i = 0;i < this->get_vertex_num();i++) {
-			vec.push_back(make_pair(i, this->vertex_pool[i].get_level()));
+		for (int i = 0;i < tree->get_vertex_num();i++) {
+			vec.push_back(make_pair(i, tree->vertex_pool[i].get_level()));
 		}
 		sort(vec.begin(), vec.end(), sortfunc);
 		for (int i = 0;i < vec.size();i++) {
 			int v_id = vec[i].first;
-			int u_id = this->get_parent_of(v_id);
+			int u_id = tree->get_parent_of(v_id);
+			if (min_barrier_dist[v_id] != -1)  {
+				int tmp_dist, tmp_min[3], tmp_max[3];
+				for (int j = 0;j < 3;j++) {
+					tmp_min[j] = min(vertex_value[u_id*3+j], min_value_along_path[v_id*3+j]);
+					tmp_max[j] = max(vertex_value[u_id*3+j], max_value_along_path[v_id*3+j]);
+					tmp_dist = (j == 0) ? (tmp_max[j] - tmp_min[j]) : min(tmp_dist, tmp_max[j] - tmp_min[j]);
+				}
+				if (min_barrier_dist[u_id] == -1 || tmp_dist < min_barrier_dist[u_id]) {
+					min_barrier_dist[u_id] = tmp_dist;
+					for (int j = 0;j < 3;j++) {
+						min_value_along_path[u_id*3+j] = tmp_min[j];
+						max_value_along_path[u_id*3+j] = tmp_max[j];
+					}
+				}
+			}
+		}
+	}
+	void top_down() {
+		queue<int> que;
+		bool *inque = new bool[tree->get_vertex_num()];
+		memset(inque, 0, sizeof(bool)*tree->get_vertex_num());
+		int root_id = tree->get_root()->get_id();
+		que.push(root_id);
+		inque[root_id] = true;
+		assert(min_barrier_dist[root_id] != -1);
+		while (!que.empty()) {
+			int v_id = que.front();
+			que.pop();
+			VertexToEdgeListNode *pListNode = (VertexToEdgeListNode*)tree->vertex_to_edge[v_id].get_next();
+			while (pListNode) {
+				int u_id = pListNode->get_edge()->get_edge_to()->get_id();
+				if (min_barrier_dist[v_id] != -1) {
+					int tmp_dist, tmp_min[3], tmp_max[3];
+					for (int j = 0;j < 3;j++) {
+						tmp_min[j] = min(vertex_value[u_id*3+j], min_value_along_path[v_id*3+j]);
+						tmp_max[j] = max(vertex_value[u_id*3+j], max_value_along_path[v_id*3+j]);
+						tmp_dist = (j == 0) ? (tmp_max[j] - tmp_min[j]) : min(tmp_dist, tmp_max[j] - tmp_min[j]);
+					}
+					if (min_barrier_dist[u_id] == -1 || tmp_dist < min_barrier_dist[u_id]) {
+						min_barrier_dist[u_id] = tmp_dist;
+						for (int j = 0;j < 3;j++) {
+							min_value_along_path[u_id*3+j] = tmp_min[j];
+							max_value_along_path[u_id*3+j] = tmp_max[j];
+						}
+					}
+				}
+				pListNode = (VertexToEdgeListNode*)pListNode->get_next();
+			}
 		}
 	}
 };
