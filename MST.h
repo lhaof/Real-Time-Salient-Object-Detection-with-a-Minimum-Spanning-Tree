@@ -68,6 +68,9 @@ public:
 		this->set_vertex_num(graph->get_vertex_num());
 		this->create_vertices(this->get_vertex_num());
 		parent_edge = new Edge*[this->get_vertex_num()];
+		for (int i = 0;i < this->get_vertex_num();i++) {
+			parent_edge[i] = NULL;
+		}
 		has_chosen = new bool[this->get_vertex_num()];
 		memset(has_chosen, 0, sizeof(bool)*this->get_vertex_num());
 		verbose = false;
@@ -84,6 +87,9 @@ public:
 	int get_parent_of(int vertex_id) {
 		// use edge_from rather than edge_to
 		// it is a little tricky, since the parent_edge is (parent --> child).
+		if (!parent_edge[vertex_id]) {
+			return -1;
+		}
 		return parent_edge[vertex_id]->get_edge_from()->get_id();
 	}
 	Edge* get_parent_edge(int vertex_id) {
@@ -102,9 +108,11 @@ private:
 			weight_to_edge[i].set_weight(i);
 		}
 		expand_front(root_id, graph);
-		for (int i = 0; i < weight_bset.size(); i++) {
-			if (weight_bset[i]) {
-				weight_to_edge[i].display_list();
+		if (verbose) {
+			for (int i = 0; i < weight_bset.size(); i++) {
+				if (weight_bset[i]) {
+					weight_to_edge[i].display_list();
+				}
 			}
 		}
 		while(true) {
@@ -170,11 +178,6 @@ bool sortfunc(pair<int,int> a, pair<int,int> b) {
     return a.second > b.second;
 }
 
-/*
-1. set seeds
-2. init barrier distance
-3. 
-*/
 class MBDMSTree: public MSTree {
 public:
 	MBDMSTree(MSTree *tree, vector<unsigned char>& image) {
@@ -209,12 +212,19 @@ public:
 		if (seed_count == tree->get_vertex_num()) {
 			throw "ERROR: All vertices are seeds!\n";
 		}
-
 		bottom_up();
 		top_down();
 	}
+	void display_MBD() {
+		for (int i = 0;i < tree->get_vertex_num();i++) {
+			printf("vertex_id: %d min_barrier_dist[%d]: %d\n",i,i,min_barrier_dist[i]);
+		}
+	}
 	void set_vertex_seed(int vertex_id, bool is_seed=true) {
 		this->is_seed[vertex_id] = is_seed;
+	}
+	int get_min_barrier_dist(int vertex_id) {
+		return min_barrier_dist[vertex_id];
 	}
 private:
 	MSTree *tree;
@@ -233,6 +243,10 @@ private:
 		for (int i = 0;i < vec.size();i++) {
 			int v_id = vec[i].first;
 			int u_id = tree->get_parent_of(v_id);
+			if (u_id == -1) {
+				// v has not parent, which implies v is the root.
+				break;
+			}
 			if (min_barrier_dist[v_id] != -1)  {
 				int tmp_dist, tmp_min[3], tmp_max[3];
 				for (int j = 0;j < 3;j++) {
@@ -277,6 +291,10 @@ private:
 							min_value_along_path[u_id*3+j] = tmp_min[j];
 							max_value_along_path[u_id*3+j] = tmp_max[j];
 						}
+					}
+					if (!inque[u_id]) {
+						que.push(u_id);
+						inque[u_id] = true;
 					}
 				}
 				pListNode = (VertexToEdgeListNode*)pListNode->get_next();

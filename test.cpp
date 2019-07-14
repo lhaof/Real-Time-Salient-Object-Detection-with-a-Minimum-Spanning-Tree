@@ -1,5 +1,6 @@
 #include <iostream>
 #include <vector>
+#include <string>
 
 #include "ADJ.h"
 #include "lodepng.h"
@@ -16,17 +17,46 @@ alpha value of i-th pixel: i * 4 + 3
 using namespace std;
 
 int main() {
-	const char* filename = "0004.png";
+	const char* filename = "0027.png";
 	vector<unsigned char> image;
 	unsigned width, height;
 	unsigned _error = lodepng::decode(image, width, height, filename);
 	if(_error) cout << "decoder error " << endl; 
-	cout << "width: " << width << " height: " << height << endl;
+	// cout << "width: " << width << " height: " << height << endl;
 
 	GridGraph graph(height, width, image, &get_weight_func);
-	graph.display_vertices(0, 2, 0, 2);
+	// graph.display_vertices(0, 2, 0, 2);
 
-	Graph g(10);
+	MSTree mstree(&(graph.vertex_pool[0]), &graph);
+	MBDMSTree mbdtree(&mstree, image);
+	for (int w = 0; w < width; w++) {
+		int v_id = w;
+		mbdtree.set_vertex_seed(v_id);
+		v_id = (height-1) * width + w;
+		mbdtree.set_vertex_seed(v_id);
+	}
+	for (int h = 0; h < height; h++) {
+		int v_id = h *width;
+		mbdtree.set_vertex_seed(v_id);
+		v_id = h * width + width - 1;
+		mbdtree.set_vertex_seed(v_id);
+	}
+	mbdtree.compute_MBD();
+
+	vector<unsigned char> salmap;
+	for (int h = 0;h < height; h++) {
+		for (int w = 0;w < width; w++) {
+			int ix = h * width + w;
+			for (int c = 0;c < 3; c++) {
+				salmap.push_back((unsigned char)mbdtree.get_min_barrier_dist(ix));
+			}
+			salmap.push_back((unsigned char)255);
+		}
+	}
+	string savename = "salmap.png";
+	lodepng::encode(savename, salmap, width, height);
+
+	//Graph g(10);
 	/*
 	g.insert_undirected_edge(0,1,3); g.insert_undirected_edge(0,2,10); 
 	g.insert_undirected_edge(0,3,13);
@@ -61,6 +91,7 @@ int main() {
 	MSTree t(&(g.vertex_pool[7]), &g);
 	*/
 
+	/*
 	g.insert_undirected_edge(0,1,3); g.insert_undirected_edge(0,3,3);
 	g.insert_undirected_edge(1,2,1); g.insert_undirected_edge(1,4,2);
 	g.insert_undirected_edge(2,5,1);
@@ -72,5 +103,6 @@ int main() {
 	g.display();
 	MSTree t(&(g.vertex_pool[4]), &g);
 	t.display();
+	*/
 	return 0;
 }
