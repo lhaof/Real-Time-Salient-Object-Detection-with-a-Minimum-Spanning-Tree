@@ -1,3 +1,9 @@
+/*
+Author: lhaof / Haofeng Li
+Contact: lhaof@foxmail.com
+Date: 2019.7.14
+*/
+
 #include <algorithm>
 #include <cassert>
 #include <cstdio>
